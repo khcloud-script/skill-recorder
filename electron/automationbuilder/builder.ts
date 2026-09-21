@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { approveAll, type CopilotSession } from "@github/copilot-sdk";
+import { approveAll } from "@github/copilot-sdk";
 
 import {
   AutomationPlanSchema,
@@ -20,6 +20,7 @@ import { requireCatalogue } from "../architectures/catalogue-registry";
 import { AgentBuilder, type BaseLive } from "../builders/agent-builder";
 import { createReadTools } from "../builders/read-tools";
 import { loadPersistedAnalysis } from "../describer/describer";
+import type { AgentSession } from "../llm/types";
 import { createLogger } from "../logger";
 import { isValidSessionId, sessionDir } from "../recorder/session-store";
 import { AUTOMATION_BUILDER_INSTRUCTIONS } from "./instructions";
@@ -46,7 +47,7 @@ function automationsRoot(): string {
 interface LiveBuild extends BaseLive {
   sessionDir: string;
   architecture: SkillArchitecture;
-  copilot: CopilotSession;
+  copilot: AgentSession;
   holder: { plan: AutomationPlan | undefined };
   /** Last plan proposed this build (kept so create can reference it). */
   lastPlan: AutomationPlan | null;

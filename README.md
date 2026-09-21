@@ -2,6 +2,13 @@
 
 **Record yourself doing a task once, then turn it into a skill your AI agent can repeat.**
 
+> [!INFO]
+> **本仓库版本新增：内网私有化部署支持。** 除 GitHub Copilot（默认）外，分析后端可
+> 切换为任意 **OpenAI 兼容的私有化大模型**（vLLM / Ollama / DeepSeek / 通义千问 /
+> 智谱 GLM / Kimi / 企业自研网关 …），全程数据不出内网、无需 GitHub 登录。
+> 详见 **[私有化部署方案](docs/私有化部署方案.md)**、
+> **[离线编译与打包](docs/离线编译与打包.md)**，配置与脚本在 **[`deploy/`](deploy/README.md)**。
+
 > [!TIP]
 > **Want to install Skill Recorder? [Go to the latest release](https://github.com/microsoft/skill-recorder/releases/latest).**
 > Scroll to **Commit-pinned installation** and copy the complete command for your

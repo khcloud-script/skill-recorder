@@ -12,6 +12,7 @@ import type {
 } from "../common/ipc";
 import { browserUrlProviderKind } from "./collectors/url-provider";
 import { resolveCopilotCliPath } from "./copilot-cli-path";
+import { privateLlmSummary } from "./llm/config";
 import { sessionsRoot } from "./recorder/session-store";
 
 const require = createRequire(import.meta.url);
@@ -29,6 +30,15 @@ function which(cmd: string): string | null {
 }
 
 function checkCopilot(): CopilotInfo {
+  // Intranet mode: the analysis backend is a private OpenAI-compatible LLM
+  // endpoint, so no Copilot CLI binary is required — report it instead.
+  const priv = privateLlmSummary();
+  if (priv) {
+    return {
+      ok: Boolean(priv.baseUrl),
+      path: `${priv.label} · ${priv.baseUrl || "(endpoint missing — set SKILL_RECORDER_LLM_BASE_URL)"}${priv.model ? ` · model ${priv.model}` : ""}`,
+    };
+  }
   // The app ships its own Copilot CLI in node_modules, so a global `copilot` on PATH is
   // optional — check the bundled binary first or one-liner installs look broken here.
   const p = resolveCopilotCliPath() ?? which("copilot");

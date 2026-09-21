@@ -1,0 +1,25 @@
+# LiteLLM 网关配置：对外暴露统一的 OpenAI 兼容接口，
+# 后端模型可热切换而客户端零改动（客户端只填别名 qwen-vl, qwen-text...）。
+
+model_list:
+  - model_name: qwen-vl            # 客户端使用的名字
+    litellm_params:
+      model: openai/qwen-vl        # openai/<upstream-name>：走 OpenAI 兼容接口
+      api_base: http://vllm-vision:8000/v1
+      api_key: EMPTY               # vLLM 默认无鉴权
+
+  - model_name: qwen-text
+    litellm_params:
+      model: openai/qwen-text
+      api_base: http://vllm-text:8000/v1
+      api_key: EMPTY
+
+# 兜底路由：qwen-vl 故障时降级到文本模型
+router_settings:
+  fallbacks:
+    - qwen-vl: [qwen-text]
+
+general_settings:
+  # 客户端必须携带此 master key；生产环境建议用 virtual keys 细分到组/人
+  master_key: sk-skill-recorder-master
+  request_timeout: 600

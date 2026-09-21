@@ -1,0 +1,9 @@
+{
+  "provider": "vllm",
+  "baseUrl": "http://gpu01.intra.company:8000/v1",
+  "apiKey": "",
+  "model": "qwen-vl",
+  "visionModel": "",
+  "vision": true,
+  "maxTokens": 8192
+}

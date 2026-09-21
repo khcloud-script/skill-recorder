@@ -1,0 +1,92 @@
+# =============================================================================
+# Skill Recorder 私有化完整部署（内网完整方案 B）
+#
+# 组件：
+#   - vllm-vision   : 视觉模型（Qwen2.5-VL-32B-Instruct，支持工具调用 + 看图）
+#   - vllm-text     :（可选）文本模型（DeepSeek/Qwen，减轻视觉卡压力）
+#   - litellm       : 统一网关（鉴权 / 模型别名 / 审计 / 多后端切换）
+#
+# 前置条件：
+#   - NVIDIA GPU + nvidia-container-toolkit
+#   - 模型权重已在内网准备好（HuggingFace/ModelScope 拉取后拷入 /data/models）
+#
+# 启动：
+#   docker compose -f deploy/full/docker-compose.yml up -d
+#
+# 客户端只需：
+#   SKILL_RECORDER_LLM_PROVIDER=custom
+#   SKILL_RECORDER_LLM_BASE_URL=http://<本机>:4000/v1
+#   SKILL_RECORDER_LLM_API_KEY=sk-skill-recorder-master
+#   SKILL_RECORDER_LLM_MODEL=qwen-vl
+# =============================================================================
+
+services:
+  vllm-vision:
+    image: vllm/vllm-openai:v0.9.0
+    container_name: sr-vllm-vision
+    restart: unless-stopped
+    volumes:
+      - /data/models:/models:ro
+    command:
+      - --model=/models/Qwen2.5-VL-32B-Instruct
+      - --served-model-name=qwen-vl
+      - --max-model-len=32768
+      - --enable-auto-tool-choice
+      - --tool-call-parser=hermes
+      - --tensor-parallel-size=2
+      - --gpu-memory-utilization=0.92
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0", "1"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 12
+
+  # 可选：单独的文本模型服务。资源紧张时可整条删除，或改为 --device_ids 复用
+  # 与上面不同的显卡。
+  vllm-text:
+    image: vllm/vllm-openai:v0.9.0
+    container_name: sr-vllm-text
+    restart: unless-stopped
+    profiles: ["text-model"]
+    volumes:
+      - /data/models:/models:ro
+    command:
+      - --model=/models/Qwen2.5-32B-Instruct
+      - --served-model-name=qwen-text
+      - --max-model-len=32768
+      - --enable-auto-tool-choice
+      - --tool-call-parser=hermes
+      - --tensor-parallel-size=2
+    ports:
+      - "8001:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["2", "3"]
+              capabilities: [gpu]
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: sr-litellm
+    restart: unless-stopped
+    depends_on:
+      vllm-vision:
+        condition: service_healthy
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: sk-skill-recorder-master
+    ports:
+      - "4000:4000"

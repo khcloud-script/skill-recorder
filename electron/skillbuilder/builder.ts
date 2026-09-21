@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { approveAll, type CopilotSession } from "@github/copilot-sdk";
+import { approveAll } from "@github/copilot-sdk";
 
 import {
   BuiltSkillSchema,
@@ -22,6 +22,7 @@ import { requireCatalogue } from "../architectures/catalogue-registry";
 import { AgentBuilder, type BaseLive } from "../builders/agent-builder";
 import { createReadTools } from "../builders/read-tools";
 import { loadPersistedAnalysis } from "../describer/describer";
+import type { AgentSession } from "../llm/types";
 import { createLogger } from "../logger";
 import { isValidSessionId, sessionDir } from "../recorder/session-store";
 import { SKILL_BUILDER_INSTRUCTIONS } from "./instructions";
@@ -69,7 +70,7 @@ export type SkillTarget = { kind: "install" } | { kind: "export"; dir: string };
 interface LiveBuild extends BaseLive {
   sessionDir: string;
   architecture: SkillArchitecture;
-  copilot: CopilotSession;
+  copilot: AgentSession;
   holder: { plan: SkillPlan | undefined; submission: SkillSubmission | undefined };
   /** Last plan proposed this build (kept so submit can reference it). */
   lastPlan: SkillPlan | null;

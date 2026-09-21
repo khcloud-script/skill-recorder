@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { approveAll, CopilotClient, type CopilotSession } from "@github/copilot-sdk";
+import { approveAll } from "@github/copilot-sdk";
 
 import {
   AnalysisSchema,
@@ -10,11 +10,12 @@ import {
   type AnalysisFeedback,
   type AnalysisSubmission,
 } from "../../common/analysis";
-import { COPILOT_SIGNED_OUT_ERROR, type AnalyzeProgress } from "../../common/ipc";
+import { type AnalyzeProgress } from "../../common/ipc";
 import type { SessionMeta } from "../../common/types";
 import { FrameExtractor } from "../frames/extractor";
 import { createLogger } from "../logger";
-import { copilotConnectionOption, withStartupTimeout } from "../copilot-cli-path";
+import { startAgentBackend } from "../llm/factory";
+import type { AgentClient, AgentSession } from "../llm/types";
 import { sessionsRoot, sessionDir, isValidSessionId } from "../recorder/session-store";
 import { DESCRIBER_INSTRUCTIONS } from "./instructions";
 import { createDescriberTools, type RedactionContext } from "./tools";
@@ -47,7 +48,7 @@ interface VideoMeta {
 interface LiveSession {
   sessionId: string;
   sessionDir: string;
-  copilot: CopilotSession;
+  copilot: AgentSession;
   revision: number;
   feedbackLog: Analysis["feedbackLog"];
   /** Mutable capture slot the `submit_analysis` tool writes into. */
@@ -84,8 +85,8 @@ export function loadPersistedAnalysis(sessionId: string): Analysis | null {
  * unavailable (callers surface the thrown error).
  */
 export class Describer {
-  private client: CopilotClient | null = null;
-  private clientStart: Promise<CopilotClient> | null = null;
+  private client: AgentClient | null = null;
+  private clientStart: Promise<AgentClient> | null = null;
   private model: string | undefined;
   private readonly live = new Map<string, LiveSession>();
   private readonly active = new Set<string>();
@@ -191,23 +192,25 @@ export class Describer {
     this.emitProgress({ sessionId, phase, message });
   }
 
-  private async ensureClient(): Promise<CopilotClient> {
+  private async ensureClient(): Promise<AgentClient> {
     if (this.client) return this.client;
     if (this.clientStart) return this.clientStart;
     this.clientStart = (async () => {
-      const connOpts = copilotConnectionOption();
-      if (connOpts) log.info("CLI path resolved from node_modules");
-      const client = new CopilotClient(connOpts);
-      await withStartupTimeout(client.start(), "Copilot CLI (Describer)");
-      const auth = await client.getAuthStatus();
-      if (!auth.isAuthenticated) {
-        await client.stop().catch(() => undefined);
-        throw new Error(COPILOT_SIGNED_OUT_ERROR);
-      }
-      this.model = await this.pickVisionModel(client);
-      log.info("Copilot ready", auth.login ? `as ${auth.login}` : "", this.model ? `· model ${this.model}` : "");
-      this.client = client;
-      return client;
+      const backend = await startAgentBackend("Describer");
+      // The describer sends screen frames, so prefer a vision-capable model:
+      // the private backend's configured vision model first, then (Copilot
+      // mode) the first advertised vision model from listModels.
+      this.model =
+        process.env.SKILL_RECORDER_MODEL ||
+        backend.visionModel ||
+        backend.model ||
+        (await this.pickVisionModel(backend.client));
+      log.info(
+        `${backend.label} ready`,
+        this.model ? `· model ${this.model}` : "",
+      );
+      this.client = backend.client;
+      return backend.client;
     })();
     try {
       return await this.clientStart;
@@ -218,9 +221,7 @@ export class Describer {
   }
 
   /** Prefer a vision-capable, enabled model (frames need vision). */
-  private async pickVisionModel(client: CopilotClient): Promise<string | undefined> {
-    const override = process.env.SKILL_RECORDER_MODEL;
-    if (override) return override;
+  private async pickVisionModel(client: AgentClient): Promise<string | undefined> {
     try {
       const models = await client.listModels();
       const vision = models.filter(
